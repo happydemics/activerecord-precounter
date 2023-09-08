@@ -12,7 +12,7 @@ module ActiveRecord
 
     # @param [Array<String,Symbol>] association_names - Eager loaded association names. e.g. `[:users, :likes]`
     # @return [Array<ActiveRecord::Base>]
-    def precount(*association_names)
+    def precount(*association_names, scope: :default)
       # Allow single record instances as well as relations to be passed.
       # The splat here will return an array of the single record if it's
       # not a relation or otherwise return the records themselves via #to_a.
@@ -36,17 +36,20 @@ module ActiveRecord
 
         primary_key = reflection.inverse_of.association_primary_key.to_sym
 
-        count_by_id = if reflection.has_scope?
-                        # ActiveRecord 5.0 unscopes #scope_for argument, so adding #where outside that:
-                        # https://github.com/rails/rails/blob/v5.0.7/activerecord/lib/active_record/reflection.rb#L314-L316
-                        reflection.scope_for(reflection.klass.unscoped).where(reflection.inverse_of.name => records.map(&primary_key)).group(
-                          reflection.inverse_of.foreign_key
-                        ).count
-                      else
-                        reflection.klass.where(reflection.inverse_of.name => records.map(&primary_key)).group(
-                          reflection.inverse_of.foreign_key
-                        ).count
-                      end
+        count_scope = if scope == :default && reflection.has_scope?
+          # ActiveRecord 5.0 unscopes #scope_for argument, so adding #where outside that:
+          # https://github.com/rails/rails/blob/v5.0.7/activerecord/lib/active_record/reflection.rb#L314-L316
+          reflection.scope_for(reflection.klass.unscoped)
+        elsif scope
+          reflection.klass.unscoped.instance_exec(nil, &scope)
+        else
+          reflection.klass
+        end
+
+        count_by_id = count_scope.where(reflection.inverse_of.name => records.map(&primary_key)).group(
+          reflection.inverse_of.foreign_key
+        ).count
+
 
         writer = define_count_accessor(klass, association_name)
         records.each do |record|

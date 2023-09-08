@@ -11,7 +11,7 @@ module ActiveRecord
         attr_writer(var_name)
         define_method(var_name) do
           count = instance_variable_get(instance_var_name)
-          raise NotPrecountedError.new("`#{association_name}' not precounted") unless count
+          count ||= public_send(association_name).count
           count
         end
       end
